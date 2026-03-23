@@ -1,0 +1,746 @@
+Metadata-Version: 2.4
+Name: ehr-fhir-genomics-toolkit
+Version: 0.1.0
+Summary: Toolkit for integrating EHR clinical data with genomic TileDB arrays for cohort analysis
+Author: Kavya Kannan
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+
+# Design Philosophy
+
+This repository is intentionally structured like a **mini data platform** rather than a single analysis script.  
+The goal is to demonstrate how translational bioinformatics pipelines can be built in a **reproducible, modular, and infrastructure‑agnostic way**.
+
+The design separates five conceptual layers:
+
+```
+User Intent
+  │
+  ▼
+Run Specification (Pydantic contracts)
+  │
+  ▼
+Data Extraction Layer
+  ├── SQL clinical cohort queries
+  ├── TileDB gene expression retrieval
+  └── TileDB variant retrieval
+  │
+  ▼
+Feature Engineering Layer
+  ├── expression reshaping
+  ├── cohort + genomic merges
+  ├── mutation summarization
+  └── gene‑signature scoring
+  │
+  ▼
+Output + Provenance
+  ├── analysis‑ready dataset
+  └── reproducible provenance log
+```
+
+Key principles used throughout the SDK:
+
+**1. Contract‑Driven Development**  
+Pydantic models define strict schemas for:
+- configuration (`AppConfig`)
+- pipeline specification (`RunSpec`)
+- provenance records
+
+This prevents silent errors and ensures predictable pipeline behavior.
+
+**2. Separation of Concerns**  
+Each module handles one responsibility:
+
+| Layer | Modules |
+|-----|-----|
+| orchestration | `cli.py` |
+| contracts | `models.py` |
+| configuration | `config.py` |
+| SQL extraction | `sql_connector.py` |
+| TileDB expression | `tiledb_expression.py` |
+| TileDB variants | `tiledb_variants.py` |
+| feature integration | `merger.py` |
+| biological features | `signatures.py` |
+| reproducibility | `provenance.py` |
+
+**3. Infrastructure Abstraction**
+
+The pipeline supports three execution modes:
+
+| Mode | Infrastructure | Purpose |
+|-----|-----|-----|
+| Demo | synthetic data | zero‑setup onboarding |
+| Mock Infra | SQLite + local TileDB | realistic development |
+| Real Infra | MariaDB + TileDB clusters | enterprise deployment |
+
+This allows **any user to run the repo locally** while preserving compatibility with production systems.
+
+**4. Reproducibility by Default**
+
+Each run records:
+
+- SQL queries and parameters
+- TileDB slice specifications
+- dataframe column structure
+- dataframe content hashes
+- output file location
+
+in `run_logs/provenance.jsonl`.
+
+This creates a deterministic **audit trail** for research pipelines.
+
+**5. Benchmark‑Driven Engineering**
+
+The repository includes a benchmark harness comparing:
+
+- a naive analysis pipeline
+- the structured SDK pipeline
+
+This allows performance claims to be **measured instead of assumed**.
+
+
+# SCLC EHR ↔ SQL ↔ TileDB Genomics Toolkit
+
+A reproducible, user-friendly research pipeline that builds an **analysis-ready DataFrame** for **Small Cell Lung Cancer (SCLC)** by integrating:
+
+- **Clinical cohort metadata** from **SQL** (MariaDB / Azure Database for MariaDB / SQLite)
+- **Gene expression** from **TileDB** (marker genes → subtype signatures)
+- Optional **variants** from **TileDB** (mutation presence flags)
+
+
+# Repo features
+
+This repo goes beyond a typical notebook or one-off script. It demonstrates:
+
+- **multi-backend data integration**: SQL + TileDB
+- **contract-driven design**: Pydantic models for config, run spec, and provenance records
+- **reproducibility**: append-only JSONL provenance logging with hashes
+- **testability**: unit tests, CLI tests, fail-fast validation tests
+- **environment portability**: demo mode, mock infra mode, real infra mode, Docker, Azure-ready patterns
+- **benchmarking mindset**: a reproducible harness to measure whether the SDK actually improves efficiency
+
+## Three ways to run (so new users can test without credentials)
+
+1. **Demo Mode (no config, no DBs)** – fastest onboarding
+2. **Option 2: Local Mock Infra (SQLite included + TileDB generator script)** – demonstrates *real SQL + TileDB queries* without credentials
+3. **Real Infra Mode (MariaDB + TileDB in your environment)** – production pattern, Azure-ready
+
+---
+
+# Module schematic (how the repo is wired)
+
+This is the **execution path** for the SCLC cohort use case, from CLI → validated spec → extract → join → features → output.
+
+```text
+                           ┌───────────────────────────────┐
+                           │  ehr_fhir_genomics_toolkit/    │
+                           │            cli.py              │
+                           │  (argparse → RunSpec validate) │
+                           └───────────────┬───────────────┘
+                                           │
+                                           │ creates + validates
+                                           ▼
+                           ┌───────────────────────────────┐
+                           │           models.py            │
+                           │  AppConfig / RunSpec contracts │
+                           └───────────────┬───────────────┘
+                                           │
+                    loads config           │ logs run_spec + steps
+                                           ▼
+        ┌──────────────────────┐    ┌───────────────────────────────┐
+        │      config.py        │    │         provenance.py         │
+        │ YAML + env overrides  │    │ JSONL audit trail (hashes)    │
+        │    → AppConfig        │    └───────────────┬───────────────┘
+        └──────────┬───────────┘                    │
+                   │                                 │
+                   │                                 │
+                   ▼                                 ▼
+     ┌────────────────────────┐         ┌─────────────────────────────┐
+     │     sql_connector.py    │         │     tiledb_expression.py     │
+     │ - sclc_*_sql() builders │         │ - fetch_expression_long()    │
+     │ - query_sql() → cohort  │         │ - pivot_expression_wide()    │
+     └──────────┬─────────────┘         └───────────┬─────────────────┘
+                │                                   │
+                │                                   │ optional
+                │                                   ▼
+                │                       ┌─────────────────────────────┐
+                │                       │      tiledb_variants.py      │
+                │                       │ - fetch_variants_for_samples │
+                │                       │ - summarize_mutations_*      │
+                │                       └───────────┬─────────────────┘
+                │                                   │
+                └───────────────────────┬───────────┘
+                                        ▼
+                           ┌───────────────────────────────┐
+                           │            merger.py            │
+                           │ - merge_clinical_expression     │
+                           │ - attach_features               │
+                           └───────────────┬───────────────┘
+                                           │
+                                           ▼
+                           ┌───────────────────────────────┐
+                           │          signatures.py          │
+                           │ compute_signature_scores()      │
+                           │ (SCLC-A/N/P/Y scores)           │
+                           └───────────────┬───────────────┘
+                                           │
+                                           ▼
+                           ┌───────────────────────────────┐
+                           │          Output CSV            │
+                           │  + run_logs/provenance.jsonl   │
+                           └───────────────────────────────┘
+```
+
+## Practical mapping to the use case
+
+For the “SCLC samples in a time window + therapy filter + mutation flags + expression signatures” workflow:
+
+1. **`cli.py`** parses flags (demo/mock/real; date window; regimen bucket; genes; variants/signatures toggles).
+2. **`models.py`** validates the request as a `RunSpec` (date range, non-empty genes, etc.).
+3. **`config.py`** (non-demo) loads `AppConfig` (SQL URL, TileDB URIs), with optional env overrides.
+4. **`sql_connector.py`** builds parameterized SQL and returns the **clinical cohort DataFrame**.
+5. **`tiledb_expression.py`** pulls expression values for the cohort’s `sample_id`s and pivots wide.
+6. **`merger.py`** joins cohort + expression on `sample_id`.
+7. **`signatures.py`** computes subtype signature features (SCLC-A/N/P/Y) and attaches them.
+8. **`tiledb_variants.py`** (optional) pulls variants and computes TP53/RB1/MYC mutation flags.
+9. **`provenance.py`** logs each step (SQL text+params, TileDB URIs/specs, DF hashes) to make reruns deterministic.
+
+## Architecture
+
+![Architecture Flowchart](assets/architecture_flowchart.png)
+
+---
+
+# Recommended local onboarding workflow (new user friendly)
+
+If you are brand new to the repo, use this exact sequence.
+
+## Path A — fastest success (Demo Mode)
+1. Create the environment:
+NOTE: Install Miniconda before running the environment setup.
+   ```bash
+   conda env create -f environment.yml
+   conda activate ehr_genomics_env
+   ```
+2. Run the demo:
+   ```bash
+   python -m ehr_fhir_genomics_toolkit.cli --demo-mode --compute-signatures --include-variants --output demo_sclc_dataset.csv
+   ```
+3. Inspect:
+   - `demo_sclc_dataset.csv`
+   - `run_logs/provenance.jsonl`
+4. Open the notebook:
+   ```bash
+   jupyter notebook
+   ```
+   then open `notebooks/01_downstream_analysis_example.ipynb`
+
+## Path B — realistic local practice (Mock Infra)
+1. Use the same Conda environment as above.
+2. Generate the local mock assets:
+   ```bash
+   python scripts/make_mock_data.py
+   ```
+3. Copy the included mock config:
+   ```bash
+   cp config.mock.yaml config.yaml
+   ```
+4. Run:
+   ```bash
+   python -m ehr_fhir_genomics_toolkit.cli --config config.yaml --therapy-mode join_table --regimen-bucket first_line_platinum_etoposide_io --compute-signatures --include-variants --output mockinfra_sclc_dataset.csv
+   ```
+5. Inspect:
+   - `mockinfra_sclc_dataset.csv`
+   - `run_logs/provenance.jsonl`
+
+## Path C — benchmark the SDK
+After demo mode works, run:
+```bash
+python scripts/run_benchmark.py
+```
+Then inspect:
+- `benchmark_results/benchmark_runs.csv`
+- `benchmark_results/benchmark_summary.json`
+
+This sequence is the smoothest way for a new user to learn the repo without getting stuck.
+
+# Run locally from scratch
+
+## 0) Create environment
+
+```bash
+conda env create -f environment.yml
+conda activate ehr_genomics_env
+```
+
+## 1) Demo Mode (no config, no credentials)
+
+```bash
+python -m ehr_fhir_genomics_toolkit.cli \
+  --demo-mode \
+  --compute-signatures \
+  --include-variants \
+  --output demo_sclc_dataset.csv
+```
+
+Outputs:
+- `demo_sclc_dataset.csv`
+- `run_logs/provenance.jsonl`
+
+## 2) Option 2: Local Mock Infra (real SQL + TileDB queries, no credentials)
+
+This repo **includes**:
+- `data/mock_ehr.sqlite` (SQLite DB you can query immediately)
+
+To also run **TileDB-backed** queries locally (recommended), generate the TileDB arrays:
+
+```bash
+python scripts/make_mock_data.py
+```
+
+That creates:
+- `data/tiledb/expression_array`
+- `data/tiledb/variants_array`
+
+Then:
+
+```bash
+cp config.mock.yaml config.yaml
+python -m ehr_fhir_genomics_toolkit.cli \
+  --config config.yaml \
+  --therapy-mode join_table \
+  --regimen-bucket first_line_platinum_etoposide_io \
+  --compute-signatures \
+  --include-variants \
+  --output mockinfra_sclc_dataset.csv
+```
+
+## 3) Real Infra Mode (MariaDB + TileDB)
+
+```bash
+cp config.yaml.example config.yaml
+# edit config.yaml with your MariaDB connection + TileDB URIs
+python -m ehr_fhir_genomics_toolkit.cli \
+  --diagnosis "small cell lung cancer" \
+  --min-age 18 \
+  --start-date 2018-01-01 \
+  --end-date 2020-12-31 \
+  --compute-signatures \
+  --include-variants \
+  --output sclc_dataset.csv
+```
+
+---
+
+# Reproducibility and provenance
+
+Every run appends to:
+- `run_logs/provenance.jsonl`
+
+It records:
+- SQL query text + parameters (**password scrubbed**)
+- TileDB URIs + slice specs
+- DataFrame hashes and column lists
+- run UUID + git SHA (when available)
+- output path
+
+---
+
+# Downstream analysis notebook
+
+```bash
+jupyter notebook
+```
+
+Open:
+- `notebooks/01_downstream_analysis_example.ipynb`
+
+Default `DATA_PATH` points to `../demo_sclc_dataset.csv`. Change it to your output file as needed.
+
+---
+
+# Docker (optional)
+
+Build:
+
+```bash
+docker build -t ehr-fhir-genomics:v1 .
+```
+
+Demo mode run:
+
+```bash
+docker run --rm -v "$PWD":/app ehr-fhir-genomics:v1 \
+  python -m ehr_fhir_genomics_toolkit.cli \
+  --demo-mode \
+  --compute-signatures \
+  --include-variants \
+  --output /app/docker_demo_dataset.csv
+```
+
+Mock infra run (after generating TileDB arrays):
+
+```bash
+docker run --rm -v "$PWD":/app ehr-fhir-genomics:v1 \
+  python -m ehr_fhir_genomics_toolkit.cli \
+  --config /app/config.mock.yaml \
+  --therapy-mode join_table \
+  --compute-signatures \
+  --include-variants \
+  --output /app/docker_mockinfra_dataset.csv
+```
+
+---
+
+# Azure (optional): ACR + AKS pattern
+
+Push image to ACR:
+
+```bash
+chmod +x scripts/build_and_push_acr.sh
+ACR_NAME=myacr IMAGE_NAME=ehr-fhir-genomics TAG=v1 ./scripts/build_and_push_acr.sh
+```
+
+Then run in AKS as a Kubernetes Job:
+- pull ACR image
+- inject secrets via Kubernetes Secrets / Key Vault CSI
+- mount durable storage for outputs and provenance logs
+
+---
+
+# Real Infra Mode via Docker (recommended for reproducibility)
+
+Real infra via Docker runs the same CLI, but you must provide:
+1) **DB connectivity** to your MariaDB/SQL host, and  
+2) **TileDB URIs** that are valid *inside the container*.
+
+## A) Mount a real config.yaml into the container (recommended)
+
+Create a real `config.yaml` locally (do not commit it), then:
+
+```bash
+docker build -t ehr-fhir-genomics:v1 .
+
+docker run --rm \
+  -v "$PWD":/app \
+  -v "$PWD/config.yaml":/app/config.yaml:ro \
+  ehr-fhir-genomics:v1 \
+  python -m ehr_fhir_genomics_toolkit.cli \
+    --config /app/config.yaml \
+    --diagnosis "small cell lung cancer" \
+    --min-age 18 \
+    --start-date 2018-01-01 \
+    --end-date 2020-12-31 \
+    --compute-signatures \
+    --include-variants \
+    --output /app/sclc_dataset.csv
+```
+
+**Requirements:**
+- The container can reach your DB host (network/firewall).
+- The TileDB URIs in `config.yaml` resolve *inside the container*.
+
+## B) If TileDB arrays are local paths, mount them too
+
+Example: arrays live on your machine under `/mnt/research/tiledb/`.
+
+```bash
+docker run --rm \
+  -v "$PWD":/app \
+  -v "$PWD/config.yaml":/app/config.yaml:ro \
+  -v "/mnt/research/tiledb":/data/tiledb:ro \
+  ehr-fhir-genomics:v1 \
+  python -m ehr_fhir_genomics_toolkit.cli \
+    --config /app/config.yaml \
+    --compute-signatures \
+    --include-variants \
+    --output /app/sclc_dataset.csv
+```
+
+Then set in `config.yaml`:
+- `tiledb.expression_uri: "/data/tiledb/expression_array"`
+- `tiledb.variants_uri: "/data/tiledb/variants_array"`
+
+## C) Alternative: pass secrets as environment variables (best for CI/CD)
+
+If you prefer secrets via env vars:
+
+```bash
+docker run --rm \
+  -v "$PWD":/app \
+  -e SQLALCHEMY_URL="mysql+pymysql://USER:PASSWORD@HOST:3306/DB" \
+  -e TILEDB_EXPRESSION_URI="/data/tiledb/expression_array" \
+  -e TILEDB_VARIANTS_URI="/data/tiledb/variants_array" \
+  -v "/mnt/research/tiledb":/data/tiledb:ro \
+  ehr-fhir-genomics:v1 \
+  python -m ehr_fhir_genomics_toolkit.cli \
+    --compute-signatures \
+    --include-variants \
+    --output /app/sclc_dataset.csv
+```
+
+This is the pattern you’d use in Azure/GitHub Actions → ACR → AKS with Key Vault-injected env vars.
+
+---
+
+# AKS Job snippet (short example)
+
+Below is a minimal **Kubernetes Job** pattern for running the pipeline in AKS. You will typically:
+- pull the image from ACR
+- inject DB/TileDB credentials via **Kubernetes Secrets** or **Key Vault CSI**
+- mount durable storage for outputs + provenance logs (Azure Files / Blobfuse)
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sclc-cohort-build
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: pipeline
+        image: myacr.azurecr.io/ehr-fhir-genomics:v1
+        env:
+        - name: SQLALCHEMY_URL
+          valueFrom:
+            secretKeyRef:
+              name: ehr-secrets
+              key: sqlalchemy_url
+        - name: TILEDB_EXPRESSION_URI
+          value: "/mnt/tiledb/expression_array"
+        - name: TILEDB_VARIANTS_URI
+          value: "/mnt/tiledb/variants_array"
+        - name: PROVENANCE_LOG_DIR
+          value: "/mnt/outputs/run_logs"
+        command: ["python","-m","ehr_fhir_genomics_toolkit.cli"]
+        args:
+          ["--compute-signatures","--include-variants","--output","/mnt/outputs/sclc_dataset.csv"]
+        volumeMounts:
+        - name: outputs
+          mountPath: /mnt/outputs
+        - name: tiledb
+          mountPath: /mnt/tiledb
+      volumes:
+      - name: outputs
+        persistentVolumeClaim:
+          claimName: outputs-pvc
+      - name: tiledb
+        persistentVolumeClaim:
+          claimName: tiledb-pvc
+```
+
+
+# Measuring efficiency improvements
+
+You **should not claim “50% improvement” unless you actually measure it**.  
+This repo includes a benchmark harness so a user can test if the SDK setup has higher computational efficiency compared to a naive pipeline.
+
+## What the current benchmark does
+It compares:
+
+1. **`naive_pipeline()`** in `ehr_fhir_genomics_toolkit/benchmarking.py`
+   - repeats work (for example, re-pivoting expression before signature scoring)
+
+2. **`sdk_pipeline()`**
+   - follows the structured SDK path
+   - reuses intermediate data (for example, pivots expression once and reuses it)
+
+This measures **software-pattern efficiency** on simulated cohort/expression/variant generation.
+
+## Important honesty note
+The current benchmark **does not measure real SQL server latency or real TileDB storage latency**.  
+It simulates those stages with deterministic in-memory generators so the benchmark is:
+- reproducible
+- safe to share
+- runnable by any new user locally
+
+So this benchmark is helpful to assess if the SDK improves end-to-end processing time relative to a naive baseline on a reproducible simulated workload.
+
+## Benchmark architecture schematic
+
+```text
+naive_pipeline / sdk_pipeline
+        │
+        ├── simulated SQL cohort retrieval
+        │
+        ├── simulated TileDB expression retrieval
+        │
+        ├── expression reshape / pivot
+        │
+        ├── merge clinical + expression
+        │
+        ├── signature scoring
+        │
+        ├── simulated TileDB variants retrieval
+        │
+        ├── mutation summarization
+        │
+        └── total pipeline runtime
+```
+
+## Run the benchmark
+
+```bash
+python scripts/run_benchmark.py
+```
+
+Bigger benchmark:
+
+```bash
+python scripts/run_benchmark.py --n-samples 1000 --repeats 10
+```
+
+Outputs:
+- `benchmark_results/benchmark_runs.csv`
+- `benchmark_results/benchmark_summary.json`
+
+## What to look for in the summary
+
+The JSON summary includes:
+- `naive_mean.sql_query_s`
+- `naive_mean.tiledb_expression_query_s`
+- `naive_mean.tiledb_variants_query_s`
+- `naive_mean.feature_engineering_s`
+- `naive_mean.pipeline_total_s`
+
+And the same for `sdk_mean`, plus:
+- `improvement_percent_vs_naive`
+- `claim_50_percent_supported`
+
+If `claim_50_percent_supported = true`, then **this benchmark** supports saying the SDK was at least 50% faster than the naive baseline on the tested workload.
+
+If it is false, the correct wording is:
+> “The SDK improved performance versus the naive baseline, but this benchmark did not support a 50% claim.”
+
+## How to extend this to real infrastructure
+If you want a benchmark on **actual SQL + TileDB backends**, add timing around:
+
+- `query_sql()` in `sql_connector.py`
+- `fetch_expression_long()` in `tiledb_expression.py`
+- `fetch_variants_for_samples()` in `tiledb_variants.py`
+
+Then compare:
+- **real backend query latency**
+- **feature engineering latency**
+- **end-to-end runtime**
+
+That is the strongest version for production benchmarking.
+
+## Why this makes the repo stronger
+This moves the repo from:
+- “here is a pipeline”
+
+to:
+- “here is a pipeline **plus a reproducible evaluation harness** showing whether the architecture improves efficiency”
+
+That is much closer to senior bioinformatics / platform engineering work.
+
+# Pydantic contracts (schema + reproducibility)
+
+This repo uses **Pydantic** to enforce:
+- **Config contracts** (`config.yaml` + env overrides → validated `AppConfig`)
+- **Run specs** (CLI args → validated `RunSpec`, including date ranges and required gene lists)
+- **Provenance record schema** (validated JSONL records for SQL/TileDB/DataFrames)
+
+Intentional “fail-fast” tests:
+- `tests/test_bad_config_validation.py`
+- `tests/test_bad_runspec_validation.py`
+
+
+# Tests
+
+```bash
+pytest -q
+```
+
+
+
+# Platform‑Grade Engineering Features
+
+This repository includes several features commonly seen in internal bioinformatics platforms:
+
+### 1. Reproducible Execution Modes
+Users can run the pipeline with **no external infrastructure**.
+
+```
+demo mode → synthetic cohort
+mock infra → local SQL + TileDB
+real infra → enterprise DBs
+```
+
+This makes the SDK accessible to:
+- researchers
+- students
+- reviewers
+- hiring teams
+
+without requiring cloud accounts.
+
+---
+
+### 2. Deterministic Provenance Logging
+
+Every pipeline run logs:
+
+```
+SQL query text
+SQL parameters
+TileDB URIs
+query specifications
+dataframe schema
+dataframe content hashes
+output dataset location
+```
+
+This is similar to the audit logging used in clinical genomics pipelines.
+
+---
+
+### 3. Modular Data Integration
+
+The system integrates heterogeneous biomedical data:
+
+```
+Clinical metadata (SQL)
+      +
+Gene expression matrices (TileDB)
+      +
+Variant calls (TileDB)
+      =
+Analysis‑ready dataset
+```
+
+The modular architecture allows each data source to evolve independently.
+
+---
+
+### 4. Benchmark Harness
+
+The repository contains a benchmarking framework that measures:
+
+```
+SQL‑like cohort retrieval
+TileDB‑like genomic retrieval
+feature engineering
+end‑to‑end pipeline runtime
+```
+
+This allows reproducible evaluation of whether the SDK improves processing efficiency.
+
+---
+
+### 5. Production Deployment Compatibility
+
+Although the repo runs locally, it is structured so that the same code can run in:
+
+- Docker containers
+- Kubernetes jobs
+- Azure / AWS pipelines
+
+using only configuration changes.
+
+This mirrors patterns used in modern biomedical data platforms.
+

@@ -1,0 +1,23 @@
+any: {}
+
+first_line_folfox:
+  include_any:
+    - folfox
+    - oxaliplatin
+    - 5-fu
+    - fluorouracil
+    - leucovorin
+  line_of_therapy: 1
+
+first_line_pembrolizumab:
+  include_any:
+    - pembrolizumab
+    - keytruda
+  line_of_therapy: 1
+
+any_immunotherapy:
+  include_any:
+    - pembrolizumab
+    - nivolumab
+    - atezolizumab
+    - durvalumab

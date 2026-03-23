@@ -1,0 +1,23 @@
+# Option 2: Local mock SQL + TileDB.
+# This repo includes the SQLite DB at data/mock_ehr.sqlite.
+# The TileDB arrays are not pre-generated in this zip (to keep it lightweight),
+# but you can generate them locally by running:
+#   python scripts/make_mock_data.py
+#
+# After generation:
+#   data/tiledb/expression_array
+#   data/tiledb/variants_array
+
+sql:
+  sqlalchemy_url: "sqlite:///data/mock_ehr.sqlite"
+  tables:
+    clinical_metadata: "clinical_metadata"
+    therapies: "therapy_lines"
+
+tiledb:
+  variants_uri: "data/tiledb/variants_array"
+  expression_uri: "data/tiledb/expression_array"
+  config: {}
+
+provenance:
+  log_dir: "run_logs"

@@ -1,0 +1,13 @@
+sql:
+  sqlalchemy_url: "sqlite:///data/real_examples/sclc_tumorminer/db/real_ehr.sqlite"
+  tables:
+    clinical_metadata: "clinical_metadata"
+    therapies: "therapy_lines"
+
+tiledb:
+  expression_uri: "data/real_examples/sclc_tumorminer/db/expression_array"
+  variants_uri: "data/real_examples/sclc_tumorminer/db/variants_array"
+  config: {}
+
+provenance:
+  log_dir: "run_logs"

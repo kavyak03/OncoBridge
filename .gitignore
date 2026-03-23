@@ -1,0 +1,37 @@
+# python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# environments
+.venv/
+env/
+*.env
+
+# conda
+*.conda
+*.yml
+
+# logs and results
+run_logs/
+survival_results/
+
+# datasets
+*.csv
+*.parquet
+*.h5
+
+# pytest
+.pytest_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# vscode
+.vscode/
+
+# docker artifacts
+docker_demo_dataset.csv
+docker_mockinfra_dataset.csv

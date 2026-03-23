@@ -1,0 +1,19 @@
+any: {}
+
+first_line_platinum_etoposide:
+  include_any:
+    - cisplatin+etoposide
+    - carboplatin+etoposide
+  line_of_therapy: 1
+
+first_line_platinum_etoposide_io:
+  include_any:
+    - carboplatin+etoposide+atezolizumab
+    - carboplatin+etoposide+durvalumab
+  line_of_therapy: 1
+
+second_line:
+  include_any:
+    - topotecan
+    - lurbinectedin
+  line_of_therapy: 2

@@ -1,0 +1,19 @@
+SCLC_A_ASCL1:
+  - ASCL1
+  - DLL3
+  - CHGA
+
+SCLC_N_NEUROD1:
+  - NEUROD1
+  - INSM1
+  - SYP
+
+SCLC_P_POU2F3:
+  - POU2F3
+  - TRPM5
+  - GFI1B
+
+SCLC_Y_YAP1:
+  - YAP1
+  - WWTR1
+  - VIM
