@@ -1,10 +1,18 @@
 from __future__ import annotations
-from typing import Any, Dict, List, Optional
+
+from typing import Any
+
 import requests
 
-def fetch_all_pages(url: str, headers: Optional[Dict[str, str]] = None, params: Optional[Dict[str, Any]] = None, timeout_seconds: int = 30) -> List[Dict[str, Any]]:
-    results: List[Dict[str, Any]] = []
-    next_url: Optional[str] = url
+
+def fetch_all_pages(
+    url: str,
+    headers: dict[str, str] | None = None,
+    params: dict[str, Any] | None = None,
+    timeout_seconds: int = 30,
+) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    next_url: str | None = url
     next_params = params
     while next_url:
         r = requests.get(next_url, headers=headers, params=next_params, timeout=timeout_seconds)

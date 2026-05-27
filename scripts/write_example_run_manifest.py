@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import json
 
-from ehr_fhir_genomics_toolkit.run_manifest import build_run_manifest, make_run_id, write_run_manifest
+from ehr_fhir_genomics_toolkit.run_manifest import (
+    build_run_manifest,
+    make_run_id,
+    write_run_manifest,
+)
 
 
 def main():

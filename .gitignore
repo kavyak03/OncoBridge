@@ -1,37 +1,54 @@
-# python
+# Python build/cache
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
 
-# environments
-.venv/
-env/
+# Local environments and secrets
+.env
 *.env
+.env.*
+.venv/
+venv/
+ENV/
+config.local.yaml
+config.real.yaml
+config.private.yaml
 
-# conda
-*.conda
-*.yml
-
-# logs and results
+# Generated data/results
 run_logs/
 survival_results/
+benchmark_results/
+merged_dataset.csv
+demo_dataset.csv
+*_dataset.csv
+*.sqlite
+!data/mock_ehr.sqlite
+*.db
+data/tiledb/
+data/real_tiledb/
+data/real_examples/**/converted/
+data/real_examples/**/db/
+# Keep bundled raw.zip by explicit request, but ignore extracted raw files.
+data/real_examples/**/raw/*.txt
+data/real_examples/**/raw/*.tsv
+data/real_examples/**/raw/*.csv
+!data/real_examples/**/raw/raw.zip
 
-# datasets
-*.csv
-*.parquet
-*.h5
+# Notebooks
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
 
-# pytest
-.pytest_cache/
-
-# OS
+# OS/editor
 .DS_Store
 Thumbs.db
-
-# vscode
 .vscode/
-
-# docker artifacts
-docker_demo_dataset.csv
-docker_mockinfra_dataset.csv
+.idea/

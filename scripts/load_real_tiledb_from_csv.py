@@ -1,7 +1,8 @@
-"""Load user-supplied real expression/variant CSV files into local TileDB arrays."""
+"""Load user-supplied expression/variant CSV files into local TileDB arrays."""
+
 from __future__ import annotations
+
 import argparse
-import shutil
 from pathlib import Path
 
 import numpy as np
@@ -9,6 +10,7 @@ import pandas as pd
 import tiledb
 
 from ehr_fhir_genomics_toolkit.data_contracts import validate_expression_csv, validate_variant_csv
+from ehr_fhir_genomics_toolkit.io_safety import safe_rmtree
 
 
 def build_expression_array(df: pd.DataFrame, uri: str):
@@ -16,20 +18,29 @@ def build_expression_array(df: pd.DataFrame, uri: str):
 
     path = Path(uri)
     if path.exists():
-        shutil.rmtree(path)
+        safe_rmtree(path, allowed_roots=[Path("data").resolve()])
 
     samples = sorted(df["sample_id"].astype(str).unique().tolist())
     genes = sorted(df["gene"].astype(str).unique().tolist())
 
     dom = tiledb.Domain(
-        tiledb.Dim(name="sample_id", domain=(min(samples), max(samples)), tile=min(100, len(samples)), dtype="ascii"),
-        tiledb.Dim(name="gene", domain=(min(genes), max(genes)), tile=min(100, len(genes)), dtype="ascii"),
+        tiledb.Dim(
+            name="sample_id",
+            domain=(min(samples), max(samples)),
+            tile=min(100, len(samples)),
+            dtype="ascii",
+        ),
+        tiledb.Dim(
+            name="gene", domain=(min(genes), max(genes)), tile=min(100, len(genes)), dtype="ascii"
+        ),
     )
-    schema = tiledb.ArraySchema(domain=dom, attrs=[tiledb.Attr(name="expression_value", dtype=np.float32)], sparse=True)
+    schema = tiledb.ArraySchema(
+        domain=dom, attrs=[tiledb.Attr(name="expression_value", dtype=np.float32)], sparse=True
+    )
     tiledb.SparseArray.create(str(path), schema)
 
-    with tiledb.SparseArray(str(path), mode="w") as A:
-        A[df["sample_id"].astype(str).tolist(), df["gene"].astype(str).tolist()] = {
+    with tiledb.SparseArray(str(path), mode="w") as array:
+        array[df["sample_id"].astype(str).tolist(), df["gene"].astype(str).tolist()] = {
             "expression_value": df["expression_value"].astype("float32").to_numpy()
         }
 
@@ -39,14 +50,24 @@ def build_variants_array(df: pd.DataFrame, uri: str):
 
     path = Path(uri)
     if path.exists():
-        shutil.rmtree(path)
+        safe_rmtree(path, allowed_roots=[Path("data").resolve()])
 
     samples = sorted(df["sample_id"].astype(str).unique().tolist())
     var_ids = sorted(df["var_id"].astype(str).unique().tolist())
 
     dom = tiledb.Domain(
-        tiledb.Dim(name="sample_id", domain=(min(samples), max(samples)), tile=min(100, len(samples)), dtype="ascii"),
-        tiledb.Dim(name="var_id", domain=(min(var_ids), max(var_ids)), tile=min(500, len(var_ids)), dtype="ascii"),
+        tiledb.Dim(
+            name="sample_id",
+            domain=(min(samples), max(samples)),
+            tile=min(100, len(samples)),
+            dtype="ascii",
+        ),
+        tiledb.Dim(
+            name="var_id",
+            domain=(min(var_ids), max(var_ids)),
+            tile=min(500, len(var_ids)),
+            dtype="ascii",
+        ),
     )
     schema = tiledb.ArraySchema(
         domain=dom,
@@ -59,25 +80,25 @@ def build_variants_array(df: pd.DataFrame, uri: str):
     )
     tiledb.SparseArray.create(str(path), schema)
 
-    with tiledb.SparseArray(str(path), mode="w") as A:
-        A[df["sample_id"].astype(str).tolist(), df["var_id"].astype(str).tolist()] = {
+    with tiledb.SparseArray(str(path), mode="w") as array:
+        array[df["sample_id"].astype(str).tolist(), df["var_id"].astype(str).tolist()] = {
             "GENE": df["GENE"].astype(str).tolist(),
             "GT": df["GT"].astype("int8").to_numpy(),
             "QUAL": df["QUAL"].astype("float32").to_numpy(),
         }
 
 
-def parse_args():
+def parse_args(argv: list[str] | None = None):
     p = argparse.ArgumentParser()
     p.add_argument("--expression-csv", default=None)
     p.add_argument("--expression-uri", default="data/real_tiledb/expression_array")
     p.add_argument("--variants-csv", default=None)
     p.add_argument("--variants-uri", default="data/real_tiledb/variants_array")
-    return p.parse_args()
+    return p.parse_args(argv)
 
 
-def main():
-    args = parse_args()
+def main(argv: list[str] | None = None):
+    args = parse_args(argv)
     if not args.expression_csv and not args.variants_csv:
         raise SystemExit("Provide at least one of --expression-csv or --variants-csv")
 

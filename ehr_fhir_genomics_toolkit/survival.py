@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import List, Sequence
 
 import numpy as np
 import pandas as pd
-from lifelines import CoxPHFitter, KaplanMeierFitter
+from lifelines import CoxPHFitter
+
+from .io_safety import atomic_write_csv
 
 SIGNATURE_COLUMNS = ["SCLC_A_ASCL1", "SCLC_N_NEUROD1", "SCLC_P_POU2F3", "SCLC_Y_YAP1"]
 MUTATION_COLUMNS = ["mut_TP53", "mut_RB1", "mut_MYC"]
@@ -44,7 +46,9 @@ def add_demo_survival_outcomes(df: pd.DataFrame, seed: int = 7) -> pd.DataFrame:
     return out
 
 
-def prepare_survival_features(df: pd.DataFrame, feature_cols: Sequence[str] | None = None) -> pd.DataFrame:
+def prepare_survival_features(
+    df: pd.DataFrame, feature_cols: Sequence[str] | None = None
+) -> pd.DataFrame:
     feature_cols = list(feature_cols or [])
     if not feature_cols:
         feature_cols = [c for c in SIGNATURE_COLUMNS + MUTATION_COLUMNS if c in df.columns]
@@ -70,15 +74,17 @@ def km_risk_groups(df: pd.DataFrame, score_col: str) -> pd.DataFrame:
     return out
 
 
-def save_survival_outputs(df: pd.DataFrame, cph: CoxPHFitter, out_dir: str = "survival_results") -> dict:
+def save_survival_outputs(
+    df: pd.DataFrame, cph: CoxPHFitter, out_dir: str = "survival_results"
+) -> dict:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
 
     cox_path = out / "cox_summary.csv"
-    cph.summary.to_csv(cox_path)
+    atomic_write_csv(cph.summary, cox_path)
 
     dataset_path = out / "survival_dataset.csv"
-    df.to_csv(dataset_path, index=False)
+    atomic_write_csv(df, dataset_path, index=False)
 
     return {
         "cox_summary_csv": str(cox_path),

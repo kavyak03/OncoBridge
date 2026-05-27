@@ -1,15 +1,77 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=78.1.1", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ehr-fhir-genomics-toolkit"
-version = "0.1.0"
+version = "0.2.0"
 description = "Toolkit for integrating EHR clinical data with genomic TileDB arrays for cohort analysis"
 authors = [{name = "Kavya Kannan"}]
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10,<3.13"
+license = {text = "MIT"}
+dependencies = [
+  "requests>=2.31,<3",
+  "pandas>=2.1,<3",
+  "numpy>=1.24,<3",
+  "PyYAML>=6.0.1,<7",
+  "tiledb>=0.28,<1",
+  "sqlalchemy>=2.0,<3",
+  "pymysql>=1.1,<2",
+  "pandera>=0.19,<1",
+  "python-dateutil>=2.9,<3",
+  "pydantic>=2,<3",
+  "pyarrow>=23.0.1,<24",
+  "lifelines>=0.28,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<10",
+  "coverage>=7,<8",
+  "ruff>=0.6,<1",
+  "mypy>=1.10,<2",
+  "bandit>=1.7,<2",
+  "pip-audit>=2.7,<3",
+  "detect-secrets>=1.5,<2",
+  "setuptools>=78.1.1",
+]
+notebooks = [
+  "notebook>=7,<8",
+  "matplotlib>=3.8,<4",
+]
+
+[project.scripts]
+ehr-fhir-genomics-toolkit = "ehr_fhir_genomics_toolkit.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["ehr_fhir_genomics_toolkit*"]
+exclude = ["tests*", "notebooks*"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+exclude = [
+  ".git",
+  ".venv",
+  "build",
+  "dist",
+  "data",
+  "notebooks",
+  "run_logs",
+  "survival_results",
+  "benchmark_results",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.coverage.run]
+branch = true
+source = ["ehr_fhir_genomics_toolkit"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 70

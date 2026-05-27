@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 from datetime import date
-from typing import List
 
 import pandas as pd
 from pydantic import ValidationError
@@ -15,7 +15,8 @@ from .demo_data import (
     generate_demo_expression_long,
     generate_demo_variants,
 )
-from .merger import attach_features, merge_clinical_expression
+from .io_safety import atomic_write_csv
+from .merger import assert_unique_key, attach_features, merge_clinical_expression
 from .models import CohortSpec, ExpressionSpec, RunSpec, VariantSpec
 from .provenance import ProvenanceLogger
 from .signatures import (
@@ -23,7 +24,7 @@ from .signatures import (
     default_gene_list,
     load_signature_definitions,
 )
-from .sql_connector import generic_cohort_sql, cohort_with_therapy_sql, query_sql
+from .sql_connector import cohort_with_therapy_sql, generic_cohort_sql, query_sql
 from .therapy_buckets import (
     apply_regimen_bucket_filter,
     list_bucket_names,
@@ -32,16 +33,19 @@ from .therapy_buckets import (
 from .tiledb_expression import fetch_expression_long, pivot_expression_wide
 from .tiledb_variants import fetch_variants_for_samples, summarize_mutations_presence
 
-
 DEFAULT_MUTATION_GENES = ["TP53", "RB1", "MYC"]
+LOGGER = logging.getLogger(__name__)
 
 
 def _parse_date(s: str) -> date:
-    y, m, d = s.split("-")
-    return date(int(y), int(m), int(d))
+    try:
+        y, m, d = s.split("-")
+        return date(int(y), int(m), int(d))
+    except Exception as exc:  # noqa: BLE001 - user-facing date parse boundary
+        raise ValueError(f"Invalid date {s!r}; expected YYYY-MM-DD") from exc
 
 
-def parse_args():
+def parse_args(argv: list[str] | None = None):
     p = argparse.ArgumentParser(
         prog="ehr_fhir_genomics_toolkit",
         description=(
@@ -86,12 +90,12 @@ def parse_args():
 
     p.add_argument("--compute-signatures", action="store_true")
     p.add_argument("--include-variants", action="store_true")
-
     p.add_argument("--output", default="merged_dataset.csv")
-    return p.parse_args()
+    p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    return p.parse_args(argv)
 
 
-def _build_runspec(args, genes: List[str]) -> RunSpec:
+def _build_runspec(args, genes: list[str]) -> RunSpec:
     cohort = CohortSpec(
         diagnosis=args.diagnosis,
         min_age=args.min_age,
@@ -124,8 +128,70 @@ def _build_runspec(args, genes: List[str]) -> RunSpec:
     )
 
 
-def main():
-    args = parse_args()
+def _build_logger(args, spec: RunSpec) -> ProvenanceLogger:
+    if spec.mode == "demo":
+        log_dir = os.environ.get("PROVENANCE_LOG_DIR", "run_logs")
+        return ProvenanceLogger(log_dir)
+
+    cfg_tmp = load_config(args.config)
+    log_dir = os.environ.get("PROVENANCE_LOG_DIR", cfg_tmp.provenance.log_dir)
+    return ProvenanceLogger(
+        log_dir,
+        include_raw_sql=cfg_tmp.provenance.include_raw_sql,
+        include_raw_tiledb_uri=cfg_tmp.provenance.include_raw_tiledb_uri,
+        include_raw_paths=cfg_tmp.provenance.include_raw_paths,
+    )
+
+
+def _log_profiles(prov: ProvenanceLogger, args, signature_defs, bucket_defs) -> None:
+    prov.log_event(
+        "signature_profile",
+        {
+            "signature_profile": args.signature_profile,
+            "signature_config": args.signature_config or None,
+            "signature_names": list(signature_defs.keys()),
+        },
+    )
+    prov.log_event(
+        "regimen_profile",
+        {
+            "regimen_profile": args.regimen_profile,
+            "regimen_config": args.regimen_config or None,
+            "available_buckets": list_bucket_names(bucket_defs),
+        },
+    )
+
+
+def _attach_optional_features(
+    merged: pd.DataFrame,
+    expr_wide: pd.DataFrame,
+    clinical_df: pd.DataFrame,
+    spec: RunSpec,
+    prov: ProvenanceLogger,
+    signature_defs,
+) -> pd.DataFrame:
+    if spec.compute_signatures:
+        sig_scores = compute_signature_scores(expr_wide, signature_definitions=signature_defs)
+        prov.log_dataframe("signature_scores", sig_scores)
+        merged = attach_features(merged, sig_scores, join_key="sample_id", how="left")
+        prov.log_dataframe("merged_with_signatures", merged)
+
+    if spec.variants.enabled:
+        variants = generate_demo_variants(clinical_df["sample_id"].astype(str).tolist(), seed=7)
+        prov.log_dataframe("variants_raw", variants)
+        mut_flags = summarize_mutations_presence(variants, spec.variants.mutation_genes)
+        prov.log_dataframe("mutation_flags", mut_flags)
+        merged = attach_features(merged, mut_flags, join_key="sample_id", how="left")
+        prov.log_dataframe("merged_with_mutations", merged)
+
+    return merged
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(argv)
+    logging.basicConfig(
+        level=getattr(logging, args.log_level), format="%(levelname)s:%(name)s:%(message)s"
+    )
 
     signature_defs = load_signature_definitions(
         signature_config=args.signature_config or None,
@@ -144,35 +210,12 @@ def main():
 
     try:
         spec = _build_runspec(args, genes)
-    except ValidationError as e:
-        raise SystemExit(f"Invalid run specification:\n{e}")
-    except Exception as e:
-        raise SystemExit(f"Invalid cohort DSL or arguments: {e}")
+    except (ValidationError, ValueError) as exc:
+        raise SystemExit(f"Invalid run specification: {exc}") from exc
 
-    if spec.mode == "demo":
-        log_dir = os.environ.get("PROVENANCE_LOG_DIR", "run_logs")
-    else:
-        cfg_tmp = load_config(args.config)
-        log_dir = os.environ.get("PROVENANCE_LOG_DIR", cfg_tmp.provenance.log_dir)
-
-    prov = ProvenanceLogger(log_dir)
+    prov = _build_logger(args, spec)
     prov.log_event("run_spec", spec.model_dump())
-    prov.log_event(
-        "signature_profile",
-        {
-            "signature_profile": args.signature_profile,
-            "signature_config": args.signature_config or None,
-            "signature_names": list(signature_defs.keys()),
-        },
-    )
-    prov.log_event(
-        "regimen_profile",
-        {
-            "regimen_profile": args.regimen_profile,
-            "regimen_config": args.regimen_config or None,
-            "available_buckets": list_bucket_names(bucket_defs),
-        },
-    )
+    _log_profiles(prov, args, signature_defs, bucket_defs)
 
     # ------------------------------------------------------------------
     # DEMO MODE
@@ -187,7 +230,6 @@ def main():
             include_therapy=(spec.cohort.therapy_mode == "join_table"),
         )
 
-        # Apply therapy-aware filtering in demo mode only if therapy is enabled.
         if spec.cohort.therapy_mode == "join_table" and spec.cohort.regimen_bucket != "any":
             clinical_df = apply_regimen_bucket_filter(
                 clinical_df=clinical_df,
@@ -196,18 +238,13 @@ def main():
             )
 
         prov.log_dataframe("clinical_df", clinical_df)
-
         if clinical_df.empty:
             raise SystemExit(
                 "No demo cohort rows remain after applying therapy / regimen filters. "
                 "Try a different regimen bucket or use --regimen-bucket any."
             )
 
-        expr_long = generate_demo_expression_long(
-            clinical_df["sample_id"].tolist(),
-            genes,
-            seed=7,
-        )
+        expr_long = generate_demo_expression_long(clinical_df["sample_id"].tolist(), genes, seed=7)
         prov.log_dataframe("expr_long", expr_long)
 
         expr_wide = pivot_expression_wide(expr_long)
@@ -215,34 +252,16 @@ def main():
 
         merged = merge_clinical_expression(clinical_df, expr_wide, join_key="sample_id")
         prov.log_dataframe("merged_clinical_expr", merged)
+        merged = _attach_optional_features(
+            merged, expr_wide, clinical_df, spec, prov, signature_defs
+        )
 
-        if spec.compute_signatures:
-            sig_scores = compute_signature_scores(
-                expr_wide,
-                signature_definitions=signature_defs,
-            )
-            prov.log_dataframe("signature_scores", sig_scores)
-            merged = attach_features(merged, sig_scores, join_key="sample_id", how="left")
-            prov.log_dataframe("merged_with_signatures", merged)
-
-        if spec.variants.enabled:
-            variants = generate_demo_variants(clinical_df["sample_id"].tolist(), seed=7)
-            prov.log_dataframe("variants_raw", variants)
-
-            mut_flags = summarize_mutations_presence(
-                variants,
-                spec.variants.mutation_genes,
-            )
-            prov.log_dataframe("mutation_flags", mut_flags)
-
-            merged = attach_features(merged, mut_flags, join_key="sample_id", how="left")
-            prov.log_dataframe("merged_with_mutations", merged)
-
-        merged.to_csv(spec.output, index=False)
+        atomic_write_csv(merged, spec.output, index=False)
         prov.log_output(spec.output)
-
-        print(f"[DEMO MODE] Wrote {spec.output} (rows={len(merged)}, cols={merged.shape[1]})")
-        print(f"Provenance log: {os.path.join(log_dir, 'provenance.jsonl')}")
+        LOGGER.info(
+            "[DEMO MODE] Wrote %s (rows=%s, cols=%s)", spec.output, len(merged), merged.shape[1]
+        )
+        LOGGER.info("Provenance log: %s", os.path.join(prov.log_dir, "provenance.jsonl"))
         return
 
     # ------------------------------------------------------------------
@@ -251,7 +270,8 @@ def main():
     cfg = load_config(args.config)
     if cfg.sql is None or cfg.tiledb is None:
         raise SystemExit(
-            "config.yaml must define both `sql.sqlalchemy_url` and `tiledb.expression_uri` for non-demo runs."
+            "config.yaml must define both `sql.sqlalchemy_url` and `tiledb.expression_uri` for non-demo runs. "
+            "For real credentials, prefer SQLALCHEMY_URL/TILEDB_* environment variables."
         )
 
     clinical_table = cfg.sql.tables.clinical_metadata
@@ -271,12 +291,10 @@ def main():
     }
 
     prov.log_sql(cfg.sql.sqlalchemy_url_plain, sql_text, params)
-
     clinical_df = query_sql(cfg.sql.sqlalchemy_url_plain, sql_text, params)
     if "collection_date" in clinical_df.columns:
         clinical_df["collection_date"] = pd.to_datetime(
-            clinical_df["collection_date"],
-            errors="coerce",
+            clinical_df["collection_date"], errors="coerce"
         )
     prov.log_dataframe("clinical_df", clinical_df)
 
@@ -293,6 +311,7 @@ def main():
             "No cohort rows returned from SQL after applying filters. "
             "Check diagnosis, date range, therapy mode, and regimen bucket."
         )
+    assert_unique_key(clinical_df, "sample_id", "clinical_df after SQL/therapy filtering")
 
     sample_ids = clinical_df["sample_id"].astype(str).tolist()
 
@@ -308,6 +327,9 @@ def main():
         sample_ids=sample_ids,
         genes=genes,
         tiledb_config=cfg.tiledb.config,
+        # Local mock TileDB arrays may require full-scan fallback depending on
+        # TileDB/Python indexing behavior. Keep production real-infra strict.
+        allow_full_scan=(spec.mode == "mock_infra"),
     )
     prov.log_dataframe("expr_long", expr_long)
 
@@ -318,10 +340,7 @@ def main():
     prov.log_dataframe("merged_clinical_expr", merged)
 
     if spec.compute_signatures:
-        sig_scores = compute_signature_scores(
-            expr_wide,
-            signature_definitions=signature_defs,
-        )
+        sig_scores = compute_signature_scores(expr_wide, signature_definitions=signature_defs)
         prov.log_dataframe("signature_scores", sig_scores)
         merged = attach_features(merged, sig_scores, join_key="sample_id", how="left")
         prov.log_dataframe("merged_with_signatures", merged)
@@ -332,32 +351,27 @@ def main():
 
         prov.log_tiledb(
             cfg.tiledb.variants_uri,
-            {
-                "dims": {"sample_id": f"{len(sample_ids)} ids"},
-                "attrs": ["GENE", "GT", "QUAL"],
-            },
+            {"dims": {"sample_id": f"{len(sample_ids)} ids"}, "attrs": ["GENE", "GT", "QUAL"]},
         )
         variants = fetch_variants_for_samples(
             cfg.tiledb.variants_uri,
             sample_ids=sample_ids,
             tiledb_config=cfg.tiledb.config,
+            # Local mock TileDB arrays may require full-scan fallback depending on
+            # TileDB/Python indexing behavior. Keep production real-infra strict.
+            allow_full_scan=(spec.mode == "mock_infra"),
         )
         prov.log_dataframe("variants_raw", variants)
 
-        mut_flags = summarize_mutations_presence(
-            variants,
-            spec.variants.mutation_genes,
-        )
+        mut_flags = summarize_mutations_presence(variants, spec.variants.mutation_genes)
         prov.log_dataframe("mutation_flags", mut_flags)
-
         merged = attach_features(merged, mut_flags, join_key="sample_id", how="left")
         prov.log_dataframe("merged_with_mutations", merged)
 
-    merged.to_csv(spec.output, index=False)
+    atomic_write_csv(merged, spec.output, index=False)
     prov.log_output(spec.output)
-
-    print(f"Wrote {spec.output} (rows={len(merged)}, cols={merged.shape[1]})")
-    print(f"Provenance log: {os.path.join(log_dir, 'provenance.jsonl')}")
+    LOGGER.info("Wrote %s (rows=%s, cols=%s)", spec.output, len(merged), merged.shape[1])
+    LOGGER.info("Provenance log: %s", os.path.join(prov.log_dir, "provenance.jsonl"))
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, Optional
+from typing import Any
 
 import yaml
 from pydantic import SecretStr
@@ -9,12 +9,12 @@ from pydantic import SecretStr
 from .models import AppConfig, ProvenanceConfig, SQLConfig, SQLTables, TileDBConfig
 
 
-def _read_yaml(path: str) -> Dict[str, Any]:
-    with open(path, "r", encoding="utf-8") as f:
+def _read_yaml(path: str) -> dict[str, Any]:
+    with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 
 
-def _env(name: str) -> Optional[str]:
+def _env(name: str) -> str | None:
     v = os.environ.get(name)
     return v if v is not None and str(v).strip() != "" else None
 
@@ -55,7 +55,9 @@ def load_config(path: str) -> AppConfig:
         # if expression_uri is provided but empty -> validator will raise (desired)
         tiledb_cfg = TileDBConfig(
             expression_uri=str(tiledb_raw.get("expression_uri") or ""),
-            variants_uri=str(tiledb_raw["variants_uri"]) if tiledb_raw.get("variants_uri") else None,
+            variants_uri=str(tiledb_raw["variants_uri"])
+            if tiledb_raw.get("variants_uri")
+            else None,
             config=dict(tiledb_raw.get("config") or {}),
         )
 

@@ -1,37 +1,26 @@
 from pathlib import Path
-import os
-import subprocess
-import sys
 
 import pandas as pd
 
+from ehr_fhir_genomics_toolkit.cli import main as cli_main
 
-def test_cli_demo_mode_creates_output(tmp_path: Path):
+
+def test_cli_demo_mode_creates_output(tmp_path: Path, monkeypatch):
     out_csv = tmp_path / "demo_out.csv"
-    cmd = [
-        sys.executable,
-        "-m",
-        "ehr_fhir_genomics_toolkit.cli",
-        "--demo-mode",
-        "--signature-profile",
-        "sclc",
-        "--compute-signatures",
-        "--include-variants",
-        "--output",
-        str(out_csv),
-    ]
-    env = os.environ.copy()
-    env["PROVENANCE_LOG_DIR"] = str(tmp_path / "run_logs")
+    monkeypatch.setenv("PROVENANCE_LOG_DIR", str(tmp_path / "run_logs"))
 
-    proc = subprocess.run(
-        cmd,
-        cwd=str(Path(__file__).resolve().parents[1]),
-        env=env,
-        capture_output=True,
-        text=True,
+    cli_main(
+        [
+            "--demo-mode",
+            "--signature-profile",
+            "sclc",
+            "--compute-signatures",
+            "--include-variants",
+            "--output",
+            str(out_csv),
+        ]
     )
 
-    assert proc.returncode == 0, f"CLI failed. stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
     assert out_csv.exists(), "Expected demo output CSV to be created"
 
     df = pd.read_csv(out_csv)

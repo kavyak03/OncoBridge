@@ -1,5 +1,22 @@
 FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["python", "-m", "ehr_fhir_genomics_toolkit.cli", "--help"]
+
+RUN useradd --create-home --shell /bin/bash appuser
+
+COPY pyproject.toml README.md LICENSE /app/
+COPY ehr_fhir_genomics_toolkit /app/ehr_fhir_genomics_toolkit
+COPY configs /app/configs
+COPY config.mock.yaml config.yaml.example config.realdata.template.yaml /app/
+
+RUN python -m pip install --upgrade pip \
+    && python -m pip install .
+
+USER appuser
+
+ENTRYPOINT ["ehr-fhir-genomics-toolkit"]
+CMD ["--help"]

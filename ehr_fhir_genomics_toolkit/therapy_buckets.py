@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Optional
 
 import pandas as pd
 import yaml
 
-
-BUILTIN_REGIMEN_BUCKET_PROFILES: Dict[str, Dict[str, dict]] = {
+BUILTIN_REGIMEN_BUCKET_PROFILES: dict[str, dict[str, dict]] = {
     "generic_oncology": {
         "any": {},
         "first_line_folfox": {
@@ -44,9 +42,9 @@ BUILTIN_REGIMEN_BUCKET_PROFILES: Dict[str, Dict[str, dict]] = {
 
 
 def load_regimen_bucket_definitions(
-    regimen_config: Optional[str] = None,
+    regimen_config: str | None = None,
     profile: str = "generic_oncology",
-) -> Dict[str, dict]:
+) -> dict[str, dict]:
     if regimen_config:
         path = Path(regimen_config)
         if not path.exists():
@@ -64,14 +62,14 @@ def load_regimen_bucket_definitions(
     return BUILTIN_REGIMEN_BUCKET_PROFILES[profile]
 
 
-def list_bucket_names(bucket_defs: Dict[str, dict]) -> list[str]:
+def list_bucket_names(bucket_defs: dict[str, dict]) -> list[str]:
     return sorted(bucket_defs.keys())
 
 
 def apply_regimen_bucket_filter(
     clinical_df: pd.DataFrame,
     bucket_name: str,
-    bucket_defs: Dict[str, dict],
+    bucket_defs: dict[str, dict],
 ) -> pd.DataFrame:
     if bucket_name == "any":
         return clinical_df

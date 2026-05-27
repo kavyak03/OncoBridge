@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package and dev tooling
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Lint
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Test
+        run: |
+          coverage run -m pytest -q
+          coverage report -m --fail-under=70
+
+      - name: Dependency audit
+        run: pip-audit --skip-editable
+
+      - name: Static security scan
+        run: bandit -r ehr_fhir_genomics_toolkit scripts -x tests
+
+      - name: Secret scan
+        run: detect-secrets scan --all-files
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: docker build -t oncobridge:test .
+      - name: Smoke-test Docker CLI
+        run: docker run --rm oncobridge:test --help

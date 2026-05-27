@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import List
-
 import numpy as np
 import pandas as pd
 
@@ -63,7 +61,9 @@ def generate_demo_clinical_cohort(
     return df
 
 
-def generate_demo_expression_long(sample_ids: List[str], genes: List[str], seed: int = 7) -> pd.DataFrame:
+def generate_demo_expression_long(
+    sample_ids: list[str], genes: list[str], seed: int = 7
+) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
     rows = []
 
@@ -88,9 +88,9 @@ def generate_demo_expression_long(sample_ids: List[str], genes: List[str], seed:
     return pd.DataFrame(rows, columns=["sample_id", "gene", "expression_value"])
 
 
-def generate_demo_variants(sample_ids: List[str], seed: int = 7) -> pd.DataFrame:
+def generate_demo_variants(sample_ids: list[str], seed: int = 7) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
-    var_ids = [f"v{i+1:05d}" for i in range(200)]
+    var_ids = [f"v{i + 1:05d}" for i in range(200)]
     genes = ["TP53", "RB1", "MYC", "NOTCH1", "CREBBP"]
 
     rows = []

@@ -1,8 +1,13 @@
 """Convert SCLC TumorMiner-style attached files to the repo's default CSV ingestion format."""
+
 from __future__ import annotations
-import argparse, json
+
+import argparse
+import json
 from pathlib import Path
+
 from ehr_fhir_genomics_toolkit.sclc_real_example import DEFAULT_PANEL_GENES, write_converted_bundle
+
 
 def parse_args():
     p = argparse.ArgumentParser()
@@ -10,6 +15,7 @@ def parse_args():
     p.add_argument("--out-dir", default="data/real_examples/sclc_tumorminer/converted")
     p.add_argument("--genes", default=",".join(DEFAULT_PANEL_GENES))
     return p.parse_args()
+
 
 def main():
     args = parse_args()
@@ -23,6 +29,7 @@ def main():
         genes=genes,
     )
     print(json.dumps({"genes": genes, "outputs": outputs}, indent=2))
+
 
 if __name__ == "__main__":
     main()

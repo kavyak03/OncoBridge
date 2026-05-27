@@ -1,19 +1,29 @@
 # Example configuration for REAL infrastructure runs.
-# - For a credential-free run, use: --demo-mode (no config required)
-# - For a local mock setup, use config.mock.yaml
+# Prefer environment variables for credentials.
+#
+# Example:
+#   set SQLALCHEMY_URL in your shell to a SQLAlchemy database URL.
+#   set TILEDB_EXPRESSION_URI to your TileDB expression array path.
+#   set TILEDB_VARIANTS_URI to your TileDB variants array path.
+#
+# Do not commit real database credentials.
+#
+# Then run:
+#   python -m ehr_fhir_genomics_toolkit.cli --config config.yaml.example ...
 
 sql:
-  # MariaDB example:
-  # sqlalchemy_url: "mysql+pymysql://USER:PASSWORD@HOST:3306/DB"
-  sqlalchemy_url: "mysql+pymysql://user:pass@host:3306/ehr"
+  sqlalchemy_url: "${SQLALCHEMY_URL}"
   tables:
     clinical_metadata: "clinical_metadata"
     therapies: "therapy_lines"
 
 tiledb:
-  variants_uri: "/path/to/tiledb/variants_array"
-  expression_uri: "/path/to/tiledb/expression_array"
+  expression_uri: "${TILEDB_EXPRESSION_URI}"
+  variants_uri: "${TILEDB_VARIANTS_URI}"
   config: {}
 
 provenance:
   log_dir: "run_logs"
+  include_raw_sql: false
+  include_raw_tiledb_uri: false
+  include_raw_paths: false

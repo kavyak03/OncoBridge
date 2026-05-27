@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Dict, Optional
 
 from .models import CohortSpec
 
@@ -14,7 +13,8 @@ ALLOWED_KEYS = {
     "regimen_bucket",
 }
 
-def parse_cohort_dsl(dsl: str) -> Dict[str, str]:
+
+def parse_cohort_dsl(dsl: str) -> dict[str, str]:
     """Parse a tiny cohort DSL.
 
     Syntax:
@@ -27,7 +27,7 @@ def parse_cohort_dsl(dsl: str) -> Dict[str, str]:
     """
     if not dsl or not dsl.strip():
         return {}
-    out: Dict[str, str] = {}
+    out: dict[str, str] = {}
     for part in dsl.split(";"):
         part = part.strip()
         if not part:
@@ -42,7 +42,8 @@ def parse_cohort_dsl(dsl: str) -> Dict[str, str]:
         out[key] = value
     return out
 
-def apply_dsl_to_cohortspec(base: CohortSpec, dsl: Optional[str]) -> CohortSpec:
+
+def apply_dsl_to_cohortspec(base: CohortSpec, dsl: str | None) -> CohortSpec:
     if not dsl:
         return base
     parsed = parse_cohort_dsl(dsl)
@@ -56,6 +57,7 @@ def apply_dsl_to_cohortspec(base: CohortSpec, dsl: Optional[str]) -> CohortSpec:
         else:
             payload[key] = value
     return CohortSpec(**payload)
+
 
 def dsl_examples() -> str:
     return (

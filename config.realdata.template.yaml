@@ -1,3 +1,4 @@
+# Template for local BYO-data runs. This file contains no secrets.
 sql:
   sqlalchemy_url: "sqlite:///data/real_ehr.sqlite"
   tables:
@@ -11,3 +12,6 @@ tiledb:
 
 provenance:
   log_dir: "run_logs"
+  include_raw_sql: false
+  include_raw_tiledb_uri: false
+  include_raw_paths: false

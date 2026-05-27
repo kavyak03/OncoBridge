@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
 import yaml
 
-
-BUILTIN_SIGNATURE_PROFILES: Dict[str, Dict[str, List[str]]] = {
+BUILTIN_SIGNATURE_PROFILES: dict[str, dict[str, list[str]]] = {
     "generic_oncology": {
         "PROLIFERATION": ["MKI67", "PCNA", "TOP2A"],
         "EMT": ["VIM", "ZEB1", "SNAI1"],
@@ -24,13 +22,13 @@ BUILTIN_SIGNATURE_PROFILES: Dict[str, Dict[str, List[str]]] = {
 }
 
 # Backward-compatible alias
-SIGNATURES: Dict[str, List[str]] = BUILTIN_SIGNATURE_PROFILES["sclc"]
+SIGNATURES: dict[str, list[str]] = BUILTIN_SIGNATURE_PROFILES["sclc"]
 
 
 def load_signature_definitions(
-    signature_config: Optional[str] = None,
+    signature_config: str | None = None,
     profile: str = "generic_oncology",
-) -> Dict[str, List[str]]:
+) -> dict[str, list[str]]:
     """
     Load signature definitions from either:
       1) a YAML file supplied by the user
@@ -49,7 +47,7 @@ def load_signature_definitions(
         raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         if not isinstance(raw, dict):
             raise ValueError("Signature config must be a mapping: signature_name -> [genes]")
-        out: Dict[str, List[str]] = {}
+        out: dict[str, list[str]] = {}
         for sig_name, genes in raw.items():
             if not isinstance(genes, list) or not genes:
                 raise ValueError(f"Signature '{sig_name}' must map to a non-empty gene list.")
@@ -67,15 +65,15 @@ def load_signature_definitions(
     return BUILTIN_SIGNATURE_PROFILES[profile]
 
 
-def default_gene_list(signature_definitions: Dict[str, List[str]]) -> List[str]:
+def default_gene_list(signature_definitions: dict[str, list[str]]) -> list[str]:
     """Flatten signature genes into a unique sorted list."""
     return sorted({gene for genes in signature_definitions.values() for gene in genes})
 
 
 def compute_signature_scores(
     expr_wide: pd.DataFrame,
-    signature_definitions: Optional[Dict[str, List[str]]] = None,
-    signature_config: Optional[str] = None,
+    signature_definitions: dict[str, list[str]] | None = None,
+    signature_config: str | None = None,
     profile: str = "generic_oncology",
 ) -> pd.DataFrame:
     """

@@ -1,7 +1,11 @@
 import json
 from pathlib import Path
 
-from ehr_fhir_genomics_toolkit.run_manifest import build_run_manifest, make_run_id, write_run_manifest
+from ehr_fhir_genomics_toolkit.run_manifest import (
+    build_run_manifest,
+    make_run_id,
+    write_run_manifest,
+)
 
 
 def test_write_run_manifest(tmp_path: Path):

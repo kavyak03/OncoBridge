@@ -21,3 +21,6 @@ tiledb:
 
 provenance:
   log_dir: "run_logs"
+  include_raw_sql: false
+  include_raw_tiledb_uri: false
+  include_raw_paths: false
